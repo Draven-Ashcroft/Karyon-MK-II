@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/repo-banner.png" alt="Karyon MK-II Banner" width="100%">
+  <img src="assets/repository-banner.png" alt="Karyon MK-II Banner" width="100%">
 </p>🧬 Karyon MK - II
 
 <p align="center">RNA Polymerase II Simulator
