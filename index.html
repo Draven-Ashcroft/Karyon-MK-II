@@ -278,6 +278,66 @@
     pointer-events:none;
   }
   .translation-hint.visible { opacity:1; }
+  /* ─────────────────────────────────────────────────────────────
+     DESKTOP / PC LAYOUT — on wide screens, place the (large) dish on
+     the left and all the text, controls and cards in a scrolling column
+     on the right, so the horizontal space is used and there's no empty
+     area below the dish. Mobile keeps the original single-column stack.
+     ───────────────────────────────────────────────────────────── */
+  @media (min-width: 900px) {
+    body {
+      display: grid;
+      grid-template-columns: auto minmax(420px, 620px);
+      grid-template-rows: auto auto auto auto auto 1fr;
+      align-items: start;
+      align-content: center;
+      justify-content: space-evenly;
+      column-gap: 3vw;
+      row-gap: 8px;
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
+      padding: 26px 3vw;
+      min-height: 100vh;
+    }
+    .dish-wrap { grid-column: 1; grid-row: 1 / span 6; align-self: center; }
+    .header { grid-column: 2; grid-row: 1; text-align: left; margin: 0 0 8px; width: 100%; }
+    .narrative-row { grid-column: 2; grid-row: 2; align-self: start; width: 100%; }
+    .narrative-row .narrative { max-width: none; }
+    .sigma-hint        { grid-column: 2; grid-row: 3; max-width: none; width: 100%; margin: 2px 0; }
+    .mrna-export-hint  { grid-column: 2; grid-row: 4; max-width: none; width: 100%; margin: 0; height: 0; overflow: hidden; }
+    .translation-hint  { grid-column: 2; grid-row: 5; max-width: none; width: 100%; margin: 0; height: 0; overflow: hidden; }
+    .mrna-export-hint.visible,
+    .translation-hint.visible { height: auto; overflow: visible; margin: 2px 0; }
+    .card-strip { grid-column: 2; grid-row: 6; max-width: none; width: 100%; align-self: start; }
+    .eyebrow  { font-size: clamp(26px, 2.6vw, 40px); white-space: nowrap; }
+    .title    { font-size: clamp(17px, 1.5vw, 23px); }
+    .subtitle { font-size: clamp(12px, 1vw, 15px); }
+
+    /* Bigger control pills with more spacing between them (desktop only). */
+    .narrative-row { gap: 16px; }
+    .speed-pill-v, .sigma-toggle-v { width: 48px; }
+    .spd-btn  { width: 48px; height: 48px; font-size: 21px; }
+    .spd-val  { width: 48px; height: 34px; font-size: 12px; }
+    .spd-div  { width: 28px; }
+    .sigma-toggle-v { gap: 11px; padding: 12px 0; }
+    .sigma-btn { width: 26px; height: 26px; border-width: 2px; }
+    .rna-proc-group { gap: 11px; padding: 10px 0; }
+    .rna-proc-btn { width: 38px; height: 38px; font-size: 15px; }
+    .rna-proc-btn svg { width: 18px; height: 18px; }
+    .rna-proc-btn.rna-proc-cross svg { width: 20px; height: 20px; }
+
+    /* Calling-card text is sized for narrow mobile cards — on the wider
+       desktop cards it looks tiny, so scale it up (desktop only). */
+    .card-strip-title { font-size: 13px; letter-spacing: 3px; margin-bottom: 9px; }
+    .card-name   { font-size: 13px; letter-spacing: 1.8px; margin-bottom: 6px; }
+    .card-detail { font-size: 15px; line-height: 1.6; }
+    .card-icon   { width: 40px; height: 40px; font-size: 18px; }
+    .info-card   { padding: 13px 15px; gap: 14px; }
+    /* Narrative + hint text a touch larger to match. */
+    .narrative p { font-size: 15px; line-height: 1.6; }
+    .sigma-hint  { font-size: 14px; }
+  }
 </style>
 </head>
 <body>
@@ -827,17 +887,21 @@ function arc(x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); }
 function computeSize(){
   const winH = window.innerHeight || document.documentElement.clientHeight || 600;
   const winW = window.innerWidth  || document.documentElement.clientWidth  || 360;
-  const maxH = winH*0.44, maxW = Math.min(winW - 20, 560);
+  // PC/desktop layout: the dish sits in a two-column layout, so size it off
+  // the available HEIGHT (desktop is landscape — height is the tighter
+  // dimension) and let it grow large. Cap by ~half the width so it never
+  // crowds the info column, and by a generous absolute max.
+  const maxH = winH * 0.80;
+  const maxW = Math.min(winW * 0.52, 720);
   const size = Math.round(Math.min(maxH, maxW));
   return (size && size > 40) ? size : 320;
 }
 function applySize(){
   SIZE = computeSize(); CX = SIZE/2; CY = SIZE/2;
   const baseDpr = window.devicePixelRatio || 1;
-  // Supersample gives crisp lines under zoom, but the backing store is
-  // (SIZE*dpr)² pixels redrawn every frame — on phones that's the main
-  // cause of animation stutter. Cap at 2.0 so mobile GPUs keep 60fps during
-  // the physics-heavy mRNA movement; desktop still looks crisp.
+  // Use the SAME supersample formula as the (visually-correct) mobile
+  // build, so the render looks identical — just larger. A higher cap
+  // over-brightened the additive glows into a washed-out blob.
   const SUPERSAMPLE = baseDpr >= 3 ? 0.9 : (baseDpr >= 2 ? 1.05 : 1.4);
   dpr = Math.min(baseDpr * SUPERSAMPLE, 2.0);
   mainCanvas.width  = Math.round(SIZE * dpr);
@@ -1569,16 +1633,17 @@ function drawNucleoplasmDNA() {
     }
     // NOTE: no ctx.closePath() — this is an open arc, not a loop.
 
-    // ── Sharp, crisp strand stroke (reduced softness vs prior version) ──
+    // ── Sharp strand stroke — two ANTIPARALLEL strands in distinct colours
+    // so the double helix reads as two separate strands. ──
     ctx.save();
     ctx.globalAlpha = dnaAlpha();
-    ctx.strokeStyle = si===0 ? 'rgba(80,150,255,0.92)' : 'rgba(110,170,255,0.92)';
+    ctx.strokeStyle = si===0 ? 'rgba(70,140,255,0.92)' : 'rgba(60,215,200,0.90)';
     ctx.lineWidth = nucR * 0.030;
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     ctx.stroke();
-    // Thin bright core line on top for crispness/definition
-    ctx.strokeStyle = 'rgba(200,225,255,0.55)';
-    ctx.lineWidth = nucR * 0.008;
+    // Thin core line on top — dimmed so the strands don't over-glow.
+    ctx.strokeStyle = si===0 ? 'rgba(180,210,255,0.30)' : 'rgba(190,245,235,0.30)';
+    ctx.lineWidth = nucR * 0.006;
     ctx.stroke();
     ctx.restore();
   });
@@ -1588,8 +1653,8 @@ function drawNucleoplasmDNA() {
   {
     ctx.save();
     ctx.globalAlpha = dnaAlpha();
-    ctx.shadowColor = 'rgba(100,190,255,0.85)';
-    ctx.shadowBlur = nucR * 0.14; // tighter blur than before for a crisper glow
+    ctx.shadowColor = 'rgba(100,190,255,0.55)';
+    ctx.shadowBlur = nucR * 0.09; // reduced — less over-glow
     [0, Math.PI].forEach((phaseOffset) => {
       ctx.beginPath();
       let started = false;
@@ -1614,7 +1679,7 @@ function drawNucleoplasmDNA() {
         const x = p.x + nx*sep, y = p.y + ny*sep;
         if (!started) { ctx.moveTo(x,y); started=true; } else { ctx.lineTo(x,y); }
       }
-      ctx.strokeStyle = 'rgba(190,225,255,0.98)';
+      ctx.strokeStyle = 'rgba(190,225,255,0.80)';
       ctx.lineWidth = nucR * 0.036;
       ctx.lineCap = 'round'; ctx.lineJoin='round';
       ctx.stroke();
@@ -1757,6 +1822,53 @@ function drawNucleoplasmDNA() {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    ctx.restore();
+  }
+
+  // ── 5′ / 3′ end labels — drawn AFTER RNA Pol II so they sit on top.
+  // Antiparallel strands: each end shows 5′ on one strand, 3′ on the other.
+  // Natural, understated style: a small terminus dot on the strand plus
+  // light strand-coloured text with a soft dark glow (no boxy pill). ──
+  if (dnaAlpha() > 0.15) {
+    ctx.save();
+    ctx.globalAlpha = dnaAlpha();
+    const fontPx = nucR*0.050;
+    ctx.font = `bold ${fontPx.toFixed(1)}px 'Space Mono','Roboto Mono',ui-monospace,monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const labelAt = (t, phaseOffset, txt, col) => {
+      const p = dnaPathAt(t);
+      const nx = -p.ty, ny = p.tx;
+      let sep = helixAmp * Math.sin(helixFreq * t * Math.PI*2 + phaseOffset);
+      if (Math.abs(sep) < helixAmp*0.35) {
+        const side = (Math.cos(phaseOffset) >= 0) ? 1 : -1;
+        sep = side * helixAmp * 0.62;
+      }
+      // strand terminus point + small connector dot
+      const ex = p.x + nx*sep, ey = p.y + ny*sep;
+      ctx.beginPath(); ctx.arc(ex, ey, nucR*0.013, 0, Math.PI*2);
+      ctx.fillStyle = col; ctx.fill();
+      // label just beyond the terminus
+      const lx = ex + (nx*Math.sign(sep))*nucR*0.060;
+      const ly = ey + (ny*Math.sign(sep))*nucR*0.060;
+      // solid dark rounded backing so the label is clearly readable
+      const w = fontPx*1.9, h = fontPx*1.55, r = h*0.5;
+      ctx.beginPath();
+      ctx.moveTo(lx-w/2+r, ly-h/2);
+      ctx.arcTo(lx+w/2, ly-h/2, lx+w/2, ly+h/2, r);
+      ctx.arcTo(lx+w/2, ly+h/2, lx-w/2, ly+h/2, r);
+      ctx.arcTo(lx-w/2, ly+h/2, lx-w/2, ly-h/2, r);
+      ctx.arcTo(lx-w/2, ly-h/2, lx+w/2, ly-h/2, r);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(6,11,22,0.9)';
+      ctx.fill();
+      // bright strand-coloured text
+      ctx.fillStyle = col;
+      ctx.fillText(txt, lx, ly+0.5);
+    };
+    labelAt(0.0, 0,        "5′", 'rgba(165,205,255,1)');
+    labelAt(1.0, 0,        "3′", 'rgba(165,205,255,1)');
+    labelAt(0.0, Math.PI,  "3′", 'rgba(130,245,230,1)');
+    labelAt(1.0, Math.PI,  "5′", 'rgba(130,245,230,1)');
     ctx.restore();
   }
 
